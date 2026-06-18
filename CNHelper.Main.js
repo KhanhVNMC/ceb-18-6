@@ -52,7 +52,7 @@ function injectSolveButtons() {
             }
             const toSend = JSON.stringify(extracted); // this should not fail, i hope
             println(`[Assistant-From-Page-Click Module] Sending to ASSISTANT: ${toSend} (effort: ${reasoningEffort})`);
-            questionLink.title = "Thinking...";
+            questionLink.title = `Thinking... (${reasoningEffort})`;
             // send to the assistant with promise on
             assistantAPI.submitNormalTextToAssistant(`This is the question in JSON format: ${toSend}`, reasoningEffort, true)
             .then(text => {
@@ -405,7 +405,7 @@ window.assistantAPI = {
     
     submitImageToAssistant(base64Image, reasoningEffort = "medium", usePromise = false) {
         if (!usePromise) window.setOutputResult("Preparing...");
-        const onAck = usePromise ? null : () => window.setOutputResult("Thinking...");
+        const onAck = usePromise ? null : () => window.setOutputResult(`Thinking... (${reasoningEffort})`);
         const reqPromise = this._submitToAICebServer("IMAGE", base64Image, reasoningEffort, onAck);
         if (usePromise) {
             return reqPromise;
@@ -474,6 +474,26 @@ Object.assign(inputBox.style, {
 });
 inputBox.spellcheck = false;
 
+// pinging utils
+function pingServer() {
+    window.setOutputResult("Pinging...");
+    connectWithFailover(() => {
+        const startTime = performance.now();
+        native.cebServer.sendRequest("ping", {}, 
+        (cid) => {
+            // ACK received
+            const latency = Math.round(performance.now() - startTime);
+            window.setOutputResult(`Pong! Latency: ${latency}ms <-> ${currentHost}`);
+        },
+        null, // ping doesn't use the Success block
+        (error) => {
+            window.setOutputResult(`Ping Error: ${error.error || error}`);
+        });
+    }, (error, failedHost) => {
+        window.setOutputResult(`CSError (${failedHost}): Cannot ping`);
+    });
+}
+
 // helper func
 function onWebLoad() {
     document.documentElement.appendChild(overlay);
@@ -482,6 +502,7 @@ function onWebLoad() {
     applyResultBoxUI();
     setWriteOutputToTitle(window.uiDataSystem.isShowInTitle());
     aopApi.injectSolveButtons();
+    pingServer();
     setOutputResult("Ready!");
 }
 
@@ -632,23 +653,7 @@ document.addEventListener("keydown", (e) => {
         // ping the server
         if (e.key === "p" || e.key === "P") {
             e.preventDefault();
-            window.setOutputResult("Pinging...");
-            connectWithFailover(() => {
-                const startTime = performance.now();
-                native.cebServer.sendRequest("ping", {}, 
-                    (cid) => {
-                        // ACK received
-                        const latency = Math.round(performance.now() - startTime);
-                        window.setOutputResult(`Pong! Latency: ${latency}ms <-> ${currentHost}`);
-                    },
-                    null, // ping doesn't use the Success block
-                    (error) => {
-                        window.setOutputResult(`Ping Error: ${error.error || error}`);
-                    }
-                );
-            }, (error, failedHost) => {
-                window.setOutputResult(`CSError (${failedHost}): Cannot ping`);
-            });
+            pingServer();
             return;
         }
         // custom server
